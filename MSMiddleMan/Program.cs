@@ -312,14 +312,13 @@ namespace PerceptionTest
         private static string ConvertToQuaternionAndString(double x, double y, double z, double rotX, double rotY, double rotZ)
         {
             //For converting data from euler to quaternion
+            double cos_z_2 = Math.Cos(0.5*rotX);
+            double cos_y_2 = Math.Cos(0.5*rotZ);
+            double cos_x_2 = Math.Cos(0.5*rotY);
 
-            double cos_z_2 = Math.Cos(0.5*rotZ);
-            double cos_y_2 = Math.Cos(0.5*rotY);
-            double cos_x_2 = Math.Cos(0.5*rotX);
-
-            double sin_z_2 = Math.Sin(0.5*rotZ);
-            double sin_y_2 = Math.Sin(0.5*rotY);
-            double sin_x_2 = Math.Sin(0.5*rotX);
+            double sin_z_2 = Math.Sin(0.5*rotX);
+            double sin_y_2 = Math.Sin(0.5*rotZ);
+            double sin_x_2 = Math.Sin(0.5*rotY);
 
             // and now compute quaternion
             double quatW = cos_z_2*cos_y_2*cos_x_2 + sin_z_2*sin_y_2*sin_x_2;

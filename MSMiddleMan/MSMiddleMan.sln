@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MSMiddleMan", "MSMiddleMan.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "vhmsg-net", "..\vhmsg-net\vhmsg-net.csproj", "{EEE96AD8-1E4F-42A8-BF4A-249A943DF39A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QuaternionTrans", "..\QuaternionTrans\QuaternionTrans.csproj", "{D98A1A34-589B-43C8-B370-C97596DFC654}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{EEE96AD8-1E4F-42A8-BF4A-249A943DF39A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EEE96AD8-1E4F-42A8-BF4A-249A943DF39A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{EEE96AD8-1E4F-42A8-BF4A-249A943DF39A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D98A1A34-589B-43C8-B370-C97596DFC654}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D98A1A34-589B-43C8-B370-C97596DFC654}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D98A1A34-589B-43C8-B370-C97596DFC654}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D98A1A34-589B-43C8-B370-C97596DFC654}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
