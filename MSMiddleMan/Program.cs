@@ -54,6 +54,18 @@ namespace PerceptionTest
         private static bool shouldReadPML = true;
         private static HandlerRoutine hr;
 
+        private static Queue<double> deltaDsIn10 = new Queue<double>(300);
+        private static Queue<double> deltaDsInHalf = new Queue<double>(15);
+        private static bool isLeaningForward = false;
+        private static bool isLeaningBackward = false;
+        private static double bodyMotionIn10 = 0;
+        private static double bodyMotionInHalf = 0;
+        private static double forwardTotal = 0;
+        private static double backwardTotal = 0;
+        private static bool trackLeaning = false;
+        private static double? prevZ = null;
+        private static string direction = "NONE";
+
         private static void OnTimedEvent(object src, ElapsedEventArgs e)
         {
             //Console.WriteLine("The Elapsed event was raised at {0}", e.SignalTime);
@@ -118,7 +130,6 @@ namespace PerceptionTest
 
         private static void Main(string[] args)
         {
-
             // Subscribing
             shouldListen = false;
             hr = new HandlerRoutine(ConsoleCtrlCheck);
@@ -187,6 +198,7 @@ namespace PerceptionTest
             trackAddressee = false;
             trackHead = false;
             trackSmile = false;
+            trackLeaning = false;
             gazeTimer.Enabled = false;
         }
 
@@ -205,6 +217,190 @@ namespace PerceptionTest
 
         }
 
+        static pml ParsePML(string xml)
+        {
+            pml myPML = new pml();
+            XmlSerializer serializer = new XmlSerializer(myPML.GetType());
+            StringReader stringReader = new StringReader(xml);
+
+            XmlTextReader xmlReader = new XmlTextReader(stringReader);
+
+            myPML = (pml)serializer.Deserialize(xmlReader);
+
+            xmlReader.Close();
+            stringReader.Close();
+
+            return myPML;
+        }
+
+        static void SendLeaningMessage(pml myPML)
+        {
+            if (myPML.body.Length > 0)
+            {
+                body myBody = myPML.body[0];
+
+                if (trackLeaning)
+                {
+                    if (myBody.layer2 != null && myBody.layer2.headPose != null && myBody.layer2.headPose.position != null)
+                    {
+                        double deltaD = 0;
+                        
+                        if (prevZ != null)
+                        {
+                            deltaD = myBody.layer2.headPose.position.z - (double)prevZ;
+                        }
+
+                        prevZ = myBody.layer2.headPose.position.z;
+
+                        deltaDsIn10.Enqueue(deltaD);
+                        bodyMotionIn10 += deltaD;
+                        deltaDsInHalf.Enqueue(deltaD);
+                        bodyMotionInHalf += deltaD;
+                        if (deltaDsIn10.Count == 300)
+                        {
+                            bodyMotionIn10 -= deltaDsIn10.Dequeue();
+                        }
+                        if (deltaDsInHalf.Count == 15)
+                        {
+                            bodyMotionInHalf -= deltaDsInHalf.Dequeue();
+                        }
+
+                        if (deltaD > 0)
+                        {
+                            //continueBackward++;
+                            //continueForward = 0;
+                            backwardTotal += deltaD;
+                        }
+                        else if (deltaD < 0)
+                        {
+                            //continueForward++;
+                            //continueBackward = 0;
+                            forwardTotal += deltaD;
+                        }
+                        //else
+                        //{
+                        //    //continueForward = (continueForward == 0) ? 0 : continueForward++;
+                        //    //continueBackward = (continueBackward == 0) ? 0 : continueBackward++;
+                        //}
+
+                        if (bodyMotionInHalf <= -12)
+                        {
+                            isLeaningForward = true;
+                            isLeaningBackward = false;
+                            direction = "FORWARD";
+                        }
+                        else if (bodyMotionInHalf >= 12)
+                        {
+                            isLeaningBackward = true;
+                            isLeaningForward = false;
+                            direction = "BACKWARD";
+                        }
+                        else
+                        {
+                            isLeaningBackward = false;
+                            isLeaningForward = false;
+                            direction = "NONE";
+                        }
+
+                        vhmsg.SendMessage("bmm", string.Format("lean {0} {1} {2} {3}", direction, bodyMotionIn10, forwardTotal, backwardTotal));
+
+                        //string messageToBeSentToSBM = ConvertToQuaternionAndString(myBody.layer2.headPose.position.x, myBody.layer2.headPose.position.y, myBody.layer2.headPose.position.z, myBody.layer2.headPose.rotation.rotX, myBody.layer2.headPose.rotation.rotY, myBody.layer2.headPose.rotation.rotZ);
+                        //for (int i = 0; i < character.Length; ++i)
+                        //{
+                        //    vhmsg.SendMessage("sbm", messageToBeSentToSBM.Replace(@"<character>", character[i]));
+                        //}
+
+                    }
+                }
+            }
+        }
+
+        static void SendMessage(pml myPML)
+        {
+            if (myPML.body.Length > 0)
+            {
+                body myBody = myPML.body[0];
+
+                if (trackHead)
+                {
+                    if (myBody.layer2 != null && myBody.layer2.headPose != null && myBody.layer2.headPose.position != null)
+                    {
+                        string messageToBeSentToSBM = ConvertToQuaternionAndString(myBody.layer2.headPose.position.x, myBody.layer2.headPose.position.y, myBody.layer2.headPose.position.z, myBody.layer2.headPose.rotation.rotX, myBody.layer2.headPose.rotation.rotY, myBody.layer2.headPose.rotation.rotZ);
+                        for (int i = 0; i < character.Length; ++i)
+                        {
+                            vhmsg.SendMessage("sbm", messageToBeSentToSBM.Replace(@"<character>", character[i]));
+                        }
+
+                    }
+                }
+                else if (trackGaze)
+                {
+                    if (shouldReadPML)
+                    {
+                        shouldReadPML = false;
+                        if (myBody.layer2 != null && myBody.layer2.headPose != null && myBody.layer2.headPose.position != null)
+                        {
+                            //string messageToBeSentToSBM = ConvertToQuaternionAndString(myBody.layer2.headPose.position.x, myBody.layer2.headPose.position.y, myBody.layer2.headPose.position.z, myBody.layer2.headPose.rotation.rotX, myBody.layer2.headPose.rotation.rotY, myBody.layer2.headPose.rotation.rotZ);
+                            string messageToBeSentToSBM = string.Empty;
+                            if (myBody.layer2.headPose.rotation.rotY <= -0.2)
+                            {
+                                //try right
+                                //messageToBeSentToSBM = @"bml char <character> <gaze direction=""LEFT"" angle=""80"" sbm:joint-range=""EYES NECK""  sbm:joint-speed=""500 100"" target=""Camera"" sbm:handle=""bradGaze""/>";
+                                messageToBeSentToSBM = @"bml char <character> <gaze direction=""LEFT"" angle=""80"" sbm:joint-range=""EYES NECK""  sbm:joint-speed=""500 100"" target=""Camera""/>";
+                            }
+                            else if (myBody.layer2.headPose.rotation.rotY >= 0.2)
+                            {
+                                // try left
+                                //messageToBeSentToSBM = @"bml char <character> <gaze direction=""RIGHT"" angle=""80"" sbm:joint-range=""EYES NECK""  sbm:joint-speed=""500 100"" target=""Camera"" sbm:handle=""bradGaze""/>";
+                                messageToBeSentToSBM = @"bml char <character> <gaze direction=""RIGHT"" angle=""80"" sbm:joint-range=""EYES NECK""  sbm:joint-speed=""500 100"" target=""Camera""/>";
+                            }
+                            else
+                            {
+                                // no gaze
+                                //messageToBeSentToSBM = @"bml char <character> <gaze direction=""RIGHT"" angle=""0"" sbm:joint-range=""EYES NECK""  sbm:joint-speed=""500 100"" target=""Camera"" sbm:handle=""bradGaze""/>";
+                                messageToBeSentToSBM = @"bml char <character> <gaze direction=""RIGHT"" angle=""0"" sbm:joint-range=""EYES NECK""  sbm:joint-speed=""500 100"" target=""Camera""/>";
+                            }
+                            for (int i = 0; i < character.Length; ++i)
+                            {
+                                vhmsg.SendMessage("sbm", messageToBeSentToSBM.Replace(@"<character>", character[i]));
+                            }
+
+                        }
+                    }
+                }
+                else if (trackAddressee)
+                {
+                    if (shouldReadPML)
+                    {
+                        shouldReadPML = false;
+                        if (myBody.layer2 != null && myBody.layer2.headPose != null && myBody.layer2.headPose.position != null)
+                        {
+                            string characterOnLeft = @"rachel";
+                            string characterOnRight = @"brad";
+
+                            if (myBody.layer2.headPose.rotation.rotY <= -0.2)
+                            {
+                                //left
+                                string messageToNPCEditor = string.Format(@"<action name=""SetFacingCharacter"" target=""user""><param name=""facingCharacter"">{0}</param></action>", characterOnLeft);
+                                vhmsg.SendMessage("NPCEditor", messageToNPCEditor);
+                            }
+                            else if (myBody.layer2.headPose.rotation.rotY >= 0.2)
+                            {
+                                //right
+                                string messageToNPCEditor = string.Format(@"<action name=""SetFacingCharacter"" target=""user""><param name=""facingCharacter"">{0}</param></action>", characterOnRight);
+                                vhmsg.SendMessage("NPCEditor", messageToNPCEditor);
+                            }
+                            else
+                            {
+                                //reset
+                                string messageToNPCEditor = string.Format(@"<action name=""SetFacingCharacter"" target=""user""><param name=""facingCharacter"">{0}</param></action>", "none");
+                                vhmsg.SendMessage("NPCEditor", messageToNPCEditor);
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         static void ParseAndSendMessage(string xml)
         {
@@ -333,6 +529,7 @@ namespace PerceptionTest
 #endif
         }
 
+        
 
         private static void MessageAction(object sender, VHMsg.Message args)
         {
@@ -358,8 +555,12 @@ namespace PerceptionTest
 //#if JUN
 //                            Console.WriteLine(splitargs[1]);
 //#endif
+                            // TODO body motion detect
                             string pmlArg = args.s.Substring(args.s.IndexOf(splitargs[2]));
-                            ParseAndSendMessage(pmlArg);
+                            //ParseAndSendMessage(pmlArg);
+                            pml myPML = ParsePML(pmlArg);
+                            SendMessage(myPML);
+                            SendLeaningMessage(myPML);
                         }
                     }
                 }
@@ -420,6 +621,16 @@ namespace PerceptionTest
                         {
                             Reset();
                             Console.WriteLine("RESET");
+                        }
+                        else if (mode.ToUpper().Trim().Equals("RESETCOUNTER"))
+                        {
+                            ResetCounter();
+                        }
+                        else if (mode.ToUpper().Trim().Equals("TRACKLEANING"))
+                        {
+                            shouldListen = true;
+                            trackLeaning = true;
+                            Console.WriteLine("TrackLeaning - ON");
                         }
                         //ParseAndSendMessage(pmlArg);
                     }
@@ -494,6 +705,18 @@ namespace PerceptionTest
             }
         }
 
+        private static void ResetCounter()
+        {
+            deltaDsIn10.Clear();
+            deltaDsInHalf.Clear();
+            isLeaningForward = false;
+            isLeaningBackward = false;
+            bodyMotionIn10 = 0;
+            forwardTotal = 0;
+            backwardTotal = 0;
+            trackLeaning = false;
+            prevZ = null;
+        }
 
         private static bool ToBoolean(string s)
         {
