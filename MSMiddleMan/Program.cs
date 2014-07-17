@@ -1,4 +1,6 @@
 ﻿//#define JUN
+//#define detectLeanByHeadPos
+//#define debug
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -9,6 +11,7 @@ using System.Threading;
 using System.Xml.Serialization;
 using System.Xml;
 using System.Timers;
+using System.Speech.Recognition;
 
 namespace PerceptionTest
 {
@@ -65,6 +68,11 @@ namespace PerceptionTest
         private static bool trackLeaning = false;
         private static double? prevZ = null;
         private static string direction = "NONE";
+        private static bool trackHand = false;
+        private static int lHandUpFrameCount = 0;
+        private static int rHandUpFrameCount = 0;
+        private static DateTime lastSpeakTimestamp = DateTime.Now;
+        private static bool isSpeaking = false;
 
         private static void OnTimedEvent(object src, ElapsedEventArgs e)
         {
@@ -137,6 +145,7 @@ namespace PerceptionTest
 
             using (vhmsg = new VHMsg.Client())
             {
+                InitSpeechRecognizer();
                 gazeTimer.Elapsed += new ElapsedEventHandler(OnTimedEvent);
                 string configFile = "config.ini";
                 if (args.Length > 0)
@@ -167,7 +176,11 @@ namespace PerceptionTest
                 while (isRunning)
                 {
                     Thread.Sleep(100);
-
+                    if (isSpeaking && DateTime.Now.Subtract(lastSpeakTimestamp).TotalMilliseconds > 3000)
+                    {
+                        isSpeaking = false;
+                        vhmsg.SendMessage("userActivities stopTalking");
+                    }
                     if (_kbhit() != 0)
                     {
                         char c = Console.ReadKey(true).KeyChar;
@@ -180,6 +193,32 @@ namespace PerceptionTest
                 CleanupBeforeExiting();
             }
 
+        }
+
+        static void InitSpeechRecognizer()
+        {
+            // TODO improve grammar
+            SpeechRecognizer recognizer = new SpeechRecognizer();
+            Choices greetings = new Choices();
+            greetings.Add(new string[] { "hello", "hi" });
+            GrammarBuilder gb = new GrammarBuilder();
+            gb.Append(greetings);
+            Grammar g = new Grammar(gb);
+            recognizer.LoadGrammar(g);
+            recognizer.SpeechRecognized +=
+                new EventHandler<SpeechRecognizedEventArgs>(sre_SpeechRecognized);
+
+        }
+
+        static void sre_SpeechRecognized(object sender, SpeechRecognizedEventArgs e)
+        {
+            lastSpeakTimestamp = DateTime.Now;
+            if (!isSpeaking)
+            {
+                vhmsg.SendMessage("userActivities speak");
+                isSpeaking = true;
+            }
+                Console.WriteLine(e.Result.Text);
         }
 
         static void CleanupBeforeExiting()
@@ -200,6 +239,7 @@ namespace PerceptionTest
             trackSmile = false;
             trackLeaning = false;
             gazeTimer.Enabled = false;
+            trackHand = false;
         }
 
         static void CharacterReset()
@@ -230,6 +270,11 @@ namespace PerceptionTest
             xmlReader.Close();
             stringReader.Close();
 
+#if debug
+
+            Console.WriteLine(myPML.body[0].layer2.skeleton.joint[0].jointName);
+#endif
+
             return myPML;
         }
 
@@ -241,7 +286,26 @@ namespace PerceptionTest
 
                 if (trackLeaning)
                 {
-                    if (myBody.layer2 != null && myBody.layer2.headPose != null && myBody.layer2.headPose.position != null)
+                    if (myBody.layer2 != null && myBody.layer2.posture.Count() > 0)
+                    {
+                        postureType pType = myBody.layer2.posture[0].postureType;
+                        if (pType == postureType.leaning_forward)
+                        {
+                            direction = "FORWARD";
+                        }
+                        else if (pType == postureType.leaning_backward)
+                        {
+                            direction = "BACKWARD";
+                        }
+                        else
+                        {
+                            direction = "NONE";
+                        }
+
+                        vhmsg.SendMessage("userActivities", string.Format("lean {0}", direction));
+                        Console.WriteLine(string.Format("lean {0}", direction));
+                    }
+                    else if (myBody.layer2 != null && myBody.layer2.headPose != null && myBody.layer2.headPose.position != null)
                     {
                         double deltaD = 0;
                         
@@ -302,8 +366,8 @@ namespace PerceptionTest
                             direction = "NONE";
                         }
 
-                        vhmsg.SendMessage("bmm", string.Format("lean {0} {1} {2} {3}", direction, bodyMotionIn10, forwardTotal, backwardTotal));
-
+                        vhmsg.SendMessage("userActivities", string.Format("lean {0} {1} {2} {3}", direction, bodyMotionIn10, forwardTotal, backwardTotal));
+                        Console.WriteLine(string.Format("lean {0} {1} {2} {3}", direction, bodyMotionIn10, forwardTotal, backwardTotal));
                         //string messageToBeSentToSBM = ConvertToQuaternionAndString(myBody.layer2.headPose.position.x, myBody.layer2.headPose.position.y, myBody.layer2.headPose.position.z, myBody.layer2.headPose.rotation.rotX, myBody.layer2.headPose.rotation.rotY, myBody.layer2.headPose.rotation.rotZ);
                         //for (int i = 0; i < character.Length; ++i)
                         //{
@@ -311,8 +375,100 @@ namespace PerceptionTest
                         //}
 
                     }
+
+
                 }
             }
+        }
+
+        static void SendInterruptionMessage(pml myPML)
+        {
+            if (myPML.body.Length > 0)
+            {
+                body myBody = myPML.body[0];
+
+                if (trackHand)
+                {
+                    if (myBody.layer2 != null)
+                    {
+                        if (myBody.layer2.handPoseLeft != null && myBody.layer2.handPoseLeft.position != null &&
+                            myBody.layer2.skeleton != null && myBody.layer2.skeleton.joint.Count() > 0)
+                        {
+                            // TODO finish detecting hand pose
+                            position lShoulderPos = null;
+                            position lElbowPos = null;
+
+                            foreach (joint j in myBody.layer2.skeleton.joint)
+                            {
+                                if (j.jointName.Equals("left_shoulder"))
+                                {
+                                    lShoulderPos = j.position;
+                                }
+                                if (j.jointName.Equals("left_elbow"))
+                                {
+                                    lElbowPos = j.position;
+                                }
+                            }
+
+                            if (lShoulderPos != null && lElbowPos != null)
+                            {
+                                position lHandPos = myBody.layer2.handPoseLeft.position;
+                                if (lHandPos.y >= (lShoulderPos.y + lElbowPos.y) / 2)
+                                {
+                                    lHandUpFrameCount++;
+                                }
+                                else
+                                {
+                                    lHandUpFrameCount = 0;
+                                }
+                            }
+                        }
+
+                        if (myBody.layer2.handPoseRight != null && myBody.layer2.handPoseRight.position != null &&
+                            myBody.layer2.skeleton != null && myBody.layer2.skeleton.joint.Count() > 0)
+                        {
+                            // TODO finish detecting hand pose
+                            position rShoulderPos = null;
+                            position rElbowPos = null;
+
+                            foreach (joint j in myBody.layer2.skeleton.joint)
+                            {
+                                if (j.jointName.Equals("right_shoulder"))
+                                {
+                                    rShoulderPos = j.position;
+                                }
+                                if (j.jointName.Equals("right_elbow"))
+                                {
+                                    rElbowPos = j.position;
+                                }
+                            }
+
+#if debug
+                            Console.WriteLine("rShoulderPos", rShoulderPos.y);
+#endif
+                            if (rShoulderPos != null && rElbowPos != null)
+                            {
+                                position rHandPos = myBody.layer2.handPoseRight.position;
+                                if (rHandPos.y >= (rShoulderPos.y + rElbowPos.y) / 2)
+                                {
+                                    rHandUpFrameCount++;
+                                }
+                                else
+                                {
+                                    rHandUpFrameCount = 0;
+                                }
+                            }
+                        }
+
+                        if (rHandUpFrameCount >= 10 || lHandUpFrameCount >= 10)
+                        {
+                            vhmsg.SendMessage("userActivities", "RaiseHand");
+                            Console.WriteLine("The user raises his/her hand.");
+                        }
+                    }
+                }
+            }
+
         }
 
         static void SendMessage(pml myPML)
@@ -561,6 +717,7 @@ namespace PerceptionTest
                             pml myPML = ParsePML(pmlArg);
                             SendMessage(myPML);
                             SendLeaningMessage(myPML);
+                            SendInterruptionMessage(myPML);
                         }
                     }
                 }
@@ -631,6 +788,30 @@ namespace PerceptionTest
                             shouldListen = true;
                             trackLeaning = true;
                             Console.WriteLine("TrackLeaning - ON");
+                        }
+                        else if (mode.ToUpper().Trim().Equals("TRACKHAND"))
+                        {
+                            shouldListen = true;
+                            trackHand = true;
+                            Console.WriteLine("TrackHand - ON");
+                        }
+                        else if (mode.ToUpper().Trim().Equals("TESTTRACKHAND"))
+                        {
+                            StringBuilder sb = new StringBuilder();
+                            using (StreamReader file = new StreamReader(@"D:\Jun\TRUST\docs\OneFrameTestHand.txt"))
+                            {
+                                string line;
+                                while ((line = file.ReadLine()) != null)
+                                {
+                                    sb.Append(line).Append("\n");
+                                }
+                            }
+
+                            for (int i = 0; i < 10; i++)
+                            {
+                                vhmsg.SendMessage("vrPerception", sb.ToString());
+                            }
+
                         }
                         //ParseAndSendMessage(pmlArg);
                     }

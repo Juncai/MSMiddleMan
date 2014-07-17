@@ -1008,7 +1008,20 @@ public partial class layer2 {
     private speechVariation[] speechVariationField;
     
     private speechRate[] speechRateField;
+
+    // add skeleton by JUN
+    private skeleton skeletonField;
     
+    /// <remarks/>
+    public skeleton skeleton {
+        get {
+            return this.skeletonField;
+        }
+        set {
+            this.skeletonField = value;
+        }
+    }
+
     /// <remarks/>
     [System.Xml.Serialization.XmlElementAttribute("posture")]
     public posture[] posture {
@@ -1790,6 +1803,104 @@ public partial class handPoseLeft {
         }
         set {
             this.conf_strFieldSpecified = value;
+        }
+    }
+}
+
+/// <remarks/>
+/// Added by Jun
+[System.CodeDom.Compiler.GeneratedCodeAttribute("xsd", "2.0.50727.3038")]
+[System.SerializableAttribute()]
+[System.Diagnostics.DebuggerStepThroughAttribute()]
+[System.ComponentModel.DesignerCategoryAttribute("code")]
+[System.Xml.Serialization.XmlTypeAttribute(AnonymousType = true)]
+[System.Xml.Serialization.XmlRootAttribute(Namespace = "", IsNullable = false)]
+public partial class skeleton
+{
+    private joint[] jointField;
+
+    /// <remarks/>
+    [System.Xml.Serialization.XmlElementAttribute("joint")]
+    public joint[] joint
+    {
+        get
+        {
+            return this.jointField;
+        }
+        set
+        {
+            this.jointField = value;
+        }
+    }
+}
+
+/// <remarks/>
+/// Added by Jun
+[System.CodeDom.Compiler.GeneratedCodeAttribute("xsd", "2.0.50727.3038")]
+[System.SerializableAttribute()]
+[System.Diagnostics.DebuggerStepThroughAttribute()]
+[System.ComponentModel.DesignerCategoryAttribute("code")]
+[System.Xml.Serialization.XmlTypeAttribute(AnonymousType = true)]
+[System.Xml.Serialization.XmlRootAttribute(Namespace = "", IsNullable = false)]
+public partial class joint
+{
+    private position positionField;
+
+    private rotation rotationField;
+
+    private double jointConfidenceField;
+
+    private string jointNameField;
+
+    /// <remarks/>
+    public position position {
+        get
+        {
+            return this.positionField;
+        }
+        set
+        {
+            this.positionField = value;
+        }
+    }
+
+    public rotation rotation
+    {
+        get
+        {
+            return this.rotationField;
+        }
+        set
+        {
+            this.rotationField = value;
+        }
+    }
+
+    /// <remarks/>
+    [System.Xml.Serialization.XmlAttributeAttribute()]
+    public double jointConfidence
+    {
+        get
+        {
+            return this.jointConfidenceField;
+        }
+        set
+        {
+            this.jointConfidenceField = value;
+        }
+    }
+
+    /// <remarks/>
+    [System.Xml.Serialization.XmlAttributeAttribute()]
+    public string jointName
+    {
+        get
+        {
+            return this.jointNameField;
+        }
+        set
+        {
+            this.jointNameField = value;
         }
     }
 }
