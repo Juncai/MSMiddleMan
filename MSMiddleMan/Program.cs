@@ -9,6 +9,7 @@ using System.Threading;
 using System.Xml.Serialization;
 using System.Xml;
 using System.Timers;
+using System.Speech.Recognition;
 
 namespace PerceptionTest
 {
@@ -130,6 +131,7 @@ namespace PerceptionTest
 
         private static void Main(string[] args)
         {
+
             // Subscribing
             shouldListen = false;
             hr = new HandlerRoutine(ConsoleCtrlCheck);
@@ -137,6 +139,9 @@ namespace PerceptionTest
 
             using (vhmsg = new VHMsg.Client())
             {
+                // init the speech recognizer
+                InitSpeechRecognizer();
+
                 gazeTimer.Elapsed += new ElapsedEventHandler(OnTimedEvent);
                 string configFile = "config.ini";
                 if (args.Length > 0)
@@ -180,6 +185,28 @@ namespace PerceptionTest
                 CleanupBeforeExiting();
             }
 
+        }
+
+        static void InitSpeechRecognizer()
+        {
+            // TODO finish
+            SpeechRecognizer recognizer = new SpeechRecognizer();
+            Choices greetings = new Choices();
+            greetings.Add(new string[] { "hello", "hi" });
+            GrammarBuilder gb = new GrammarBuilder();
+            gb.Append(greetings);
+            Grammar g = new Grammar(gb);
+            recognizer.LoadGrammar(g);
+            recognizer.SpeechRecognized +=
+                new EventHandler<SpeechRecognizedEventArgs>(sre_SpeechRecognized);
+
+        }
+
+        static void sre_SpeechRecognized(object sender, SpeechRecognizedEventArgs e)
+        {
+            // TODO finish callback function
+            vhmsg.SendMessage("userActivities speak");
+            Console.WriteLine(e.Result.Text);
         }
 
         static void CleanupBeforeExiting()
