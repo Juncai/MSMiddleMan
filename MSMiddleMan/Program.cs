@@ -12,6 +12,9 @@ using System.Xml.Serialization;
 using System.Xml;
 using System.Timers;
 using System.Speech.Recognition;
+using Microsoft.Kinect;
+using Microsoft.Kinect.Toolkit;
+using Microsoft.Kinect.Toolkit.FaceTracking;
 
 namespace PerceptionTest
 {
@@ -71,8 +74,9 @@ namespace PerceptionTest
         private static bool trackHand = false;
         private static int lHandUpFrameCount = 0;
         private static int rHandUpFrameCount = 0;
-        private static DateTime lastSpeakTimestamp = DateTime.Now;
-        private static bool isSpeaking = false;
+        private static DateTime lastSpeechDetected = DateTime.Now;
+        private static bool speechDetected = false;
+        private static bool userInteracting = false;
 
         private static void OnTimedEvent(object src, ElapsedEventArgs e)
         {
@@ -151,13 +155,15 @@ namespace PerceptionTest
                     //recognizer.UnloadAllGrammars();
                     recognizer.SetInputToDefaultAudioDevice();
                     Choices greetings = new Choices();
-                    greetings.Add(new string[] { "hello", "hi" });
+                    greetings.Add(new string[] { "Hi", "Rachel" });
                     GrammarBuilder gb = new GrammarBuilder();
                     gb.Append(greetings);
                     Grammar g = new Grammar(gb);
                     recognizer.LoadGrammar(g);
                     recognizer.SpeechRecognized +=
                         new EventHandler<SpeechRecognizedEventArgs>(sre_SpeechRecognized);
+                    recognizer.SpeechDetected +=
+                        new EventHandler<SpeechDetectedEventArgs>(ser_SpeechDetected);
                     recognizer.RecognizeAsync(RecognizeMode.Multiple);
 
                     gazeTimer.Elapsed += new ElapsedEventHandler(OnTimedEvent);
@@ -190,11 +196,16 @@ namespace PerceptionTest
                     while (isRunning)
                     {
                         Thread.Sleep(100);
-                        if (isSpeaking && DateTime.Now.Subtract(lastSpeakTimestamp).TotalMilliseconds > 3000)
+                        if (userInteracting && !speechDetected && DateTime.Now.Subtract(lastSpeechDetected).TotalMilliseconds > 3000)
                         {
-                            isSpeaking = false;
+                            userInteracting = false;
                             vhmsg.SendMessage("userActivities stopTalking");
+                            Console.WriteLine("userActivities stopTalking");
                         }
+
+                        speechDetected = false;
+
+                        //Console.WriteLine(recognizer.AudioState);
                         if (_kbhit() != 0)
                         {
                             char c = Console.ReadKey(true).KeyChar;
@@ -224,13 +235,19 @@ namespace PerceptionTest
         //        new EventHandler<SpeechRecognizedEventArgs>(sre_SpeechRecognized);
         //}
 
+        static void ser_SpeechDetected(object sender, SpeechDetectedEventArgs e)
+        {
+            Console.WriteLine("there is a speech");
+            speechDetected = true;
+            lastSpeechDetected = DateTime.Now;
+        }
+
         static void sre_SpeechRecognized(object sender, SpeechRecognizedEventArgs e)
         {
-            lastSpeakTimestamp = DateTime.Now;
-            if (!isSpeaking)
+            if (!userInteracting)
             {
                 vhmsg.SendMessage("userActivities speak");
-                isSpeaking = true;
+                userInteracting = true;
             }
                 Console.WriteLine(e.Result.Text);
         }
@@ -476,6 +493,7 @@ namespace PerceptionTest
 
                         if (rHandUpFrameCount >= 10 || lHandUpFrameCount >= 10)
                         {
+                            userInteracting = true;
                             vhmsg.SendMessage("userActivities", "RaiseHand");
                             Console.WriteLine("The user raises his/her hand.");
                         }
