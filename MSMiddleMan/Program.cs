@@ -145,48 +145,63 @@ namespace PerceptionTest
 
             using (vhmsg = new VHMsg.Client())
             {
-                InitSpeechRecognizer();
-                gazeTimer.Elapsed += new ElapsedEventHandler(OnTimedEvent);
-                string configFile = "config.ini";
-                if (args.Length > 0)
+                using (SpeechRecognitionEngine recognizer = new SpeechRecognitionEngine(new System.Globalization.CultureInfo("en-US")))
                 {
-                    configFile = args[0];
-                    Console.WriteLine("Reading config file - " + configFile);
-                }
+                    //recognizer.PauseRecognizerOnRecognition = true;
+                    //recognizer.UnloadAllGrammars();
+                    recognizer.SetInputToDefaultAudioDevice();
+                    Choices greetings = new Choices();
+                    greetings.Add(new string[] { "hello", "hi" });
+                    GrammarBuilder gb = new GrammarBuilder();
+                    gb.Append(greetings);
+                    Grammar g = new Grammar(gb);
+                    recognizer.LoadGrammar(g);
+                    recognizer.SpeechRecognized +=
+                        new EventHandler<SpeechRecognizedEventArgs>(sre_SpeechRecognized);
+                    recognizer.RecognizeAsync(RecognizeMode.Multiple);
 
-                ReadConfigFile(configFile);
-
-                vhmsg.OpenConnection();
-
-                Console.WriteLine("VHMSG_SERVER: {0}", vhmsg.Server);
-                Console.WriteLine("VHMSG_SCOPE: {0}", vhmsg.Scope);
-
-                Console.WriteLine("Press q to quit");
-                Console.WriteLine("Listening to vrPerception Messages");
-
-                vhmsg.MessageEvent += new VHMsg.Client.MessageEventHandler(MessageAction);
-                vhmsg.SubscribeMessage("vrPerception");
-                vhmsg.SubscribeMessage("vrAllCall");
-                vhmsg.SubscribeMessage("vrKillComponent");
-                vhmsg.SubscribeMessage("vrPerceptionApplication");
-
-                vhmsg.SendMessage("vrComponent perception-test-application");
-
-
-                while (isRunning)
-                {
-                    Thread.Sleep(100);
-                    if (isSpeaking && DateTime.Now.Subtract(lastSpeakTimestamp).TotalMilliseconds > 3000)
+                    gazeTimer.Elapsed += new ElapsedEventHandler(OnTimedEvent);
+                    string configFile = "config.ini";
+                    if (args.Length > 0)
                     {
-                        isSpeaking = false;
-                        vhmsg.SendMessage("userActivities stopTalking");
+                        configFile = args[0];
+                        Console.WriteLine("Reading config file - " + configFile);
                     }
-                    if (_kbhit() != 0)
+
+                    ReadConfigFile(configFile);
+
+                    vhmsg.OpenConnection();
+
+                    Console.WriteLine("VHMSG_SERVER: {0}", vhmsg.Server);
+                    Console.WriteLine("VHMSG_SCOPE: {0}", vhmsg.Scope);
+
+                    Console.WriteLine("Press q to quit");
+                    Console.WriteLine("Listening to vrPerception Messages");
+
+                    vhmsg.MessageEvent += new VHMsg.Client.MessageEventHandler(MessageAction);
+                    vhmsg.SubscribeMessage("vrPerception");
+                    vhmsg.SubscribeMessage("vrAllCall");
+                    vhmsg.SubscribeMessage("vrKillComponent");
+                    vhmsg.SubscribeMessage("vrPerceptionApplication");
+
+                    vhmsg.SendMessage("vrComponent perception-test-application");
+
+
+                    while (isRunning)
                     {
-                        char c = Console.ReadKey(true).KeyChar;
-                        if (c == 'q')
+                        Thread.Sleep(100);
+                        if (isSpeaking && DateTime.Now.Subtract(lastSpeakTimestamp).TotalMilliseconds > 3000)
                         {
-                            isRunning = false;
+                            isSpeaking = false;
+                            vhmsg.SendMessage("userActivities stopTalking");
+                        }
+                        if (_kbhit() != 0)
+                        {
+                            char c = Console.ReadKey(true).KeyChar;
+                            if (c == 'q')
+                            {
+                                isRunning = false;
+                            }
                         }
                     }
                 }
@@ -195,20 +210,19 @@ namespace PerceptionTest
 
         }
 
-        static void InitSpeechRecognizer()
-        {
-            // TODO improve grammar
-            SpeechRecognizer recognizer = new SpeechRecognizer();
-            Choices greetings = new Choices();
-            greetings.Add(new string[] { "hello", "hi" });
-            GrammarBuilder gb = new GrammarBuilder();
-            gb.Append(greetings);
-            Grammar g = new Grammar(gb);
-            recognizer.LoadGrammar(g);
-            recognizer.SpeechRecognized +=
-                new EventHandler<SpeechRecognizedEventArgs>(sre_SpeechRecognized);
-
-        }
+        //static void InitSpeechRecognizer()
+        //{
+        //    // TODO improve grammar
+        //    SpeechRecognizer recognizer = new SpeechRecognizer();
+        //    Choices greetings = new Choices();
+        //    greetings.Add(new string[] { "hello", "hi" });
+        //    GrammarBuilder gb = new GrammarBuilder();
+        //    gb.Append(greetings);
+        //    Grammar g = new Grammar(gb);
+        //    recognizer.LoadGrammar(g);
+        //    recognizer.SpeechRecognized +=
+        //        new EventHandler<SpeechRecognizedEventArgs>(sre_SpeechRecognized);
+        //}
 
         static void sre_SpeechRecognized(object sender, SpeechRecognizedEventArgs e)
         {
