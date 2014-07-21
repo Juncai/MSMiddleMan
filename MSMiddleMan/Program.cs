@@ -76,6 +76,7 @@ namespace PerceptionTest
         private static bool speechDetected = false;
         private static bool userInteracting = false;
         private static bool mouthOpen = false;
+        private static bool isTalking = false;
 
         private static void OnTimedEvent(object src, ElapsedEventArgs e)
         {
@@ -197,9 +198,10 @@ namespace PerceptionTest
                 while (isRunning)
                 {
                     Thread.Sleep(100);
-                    if (userInteracting && !speechDetected && DateTime.Now.Subtract(lastSpeechDetected).TotalMilliseconds > 3000)
+                    if (isTalking && !speechDetected && DateTime.Now.Subtract(lastSpeechDetected).TotalMilliseconds > 3000)
                     {
                         //userInteracting = false;
+                        isTalking = false;
                         vhmsg.SendMessage("userActivities stopTalking");
                         Console.WriteLine("userActivities stopTalking");
                     }
@@ -249,12 +251,14 @@ namespace PerceptionTest
 
         static void sre_SpeechRecognized(object sender, SpeechRecognizedEventArgs e)
         {
+            Console.WriteLine(e.Result.Text);
             if (!userInteracting && mouthOpen)
             {
                 // TODO send speaking msg
                 vhmsg.SendMessage("userActivities speak");
+                Console.WriteLine("userActivities speak");
+                isTalking = true;
                 //userInteracting = true;
-                Console.WriteLine(e.Result.Text);
             }
         }
 

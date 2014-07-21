@@ -41,7 +41,7 @@ namespace MSMiddleMan
         private const int MiddleBottomUpperLip = 87;
         private const int RightTopLowerLip = 83;
         private const int RightBottomUpperLip = 81;
-        private const int mouthOpenThreshold = 2;
+        
         public bool mouthOpen = false;
 
         //private bool faceTracked = false;
@@ -286,7 +286,7 @@ namespace MSMiddleMan
 
             public bool mouthOpen = false;
 
-            private const int mouthDelayFrame = 5;
+            private const int mouthDelayFrame = 3;
 
             private int mouthOpenFrame = 0;
 
@@ -299,6 +299,12 @@ namespace MSMiddleMan
             private const double leanThreshold = 0.05;
 
             private VHMsg.Client vhmsg;
+
+            private const int mouthOpenThreshold = 1;
+
+            private DateTime mouthLastChange = DateTime.Now;
+
+            private const double mouthKeep = 0.7;
 
             public void Dispose()
             {
@@ -440,8 +446,9 @@ namespace MSMiddleMan
                     {
                         mouthOpenFrame++;
                         mouthClosedFrame = 0;
-                        if (!mouthOpen && mouthOpenFrame >= mouthDelayFrame)
+                        if (!mouthOpen && mouthOpenFrame >= mouthDelayFrame && DateTime.Now.Subtract(mouthLastChange).TotalMilliseconds > 1000 * mouthKeep)
                         {
+                            mouthLastChange = DateTime.Now;
                             mouthOpen = true;
                             Console.WriteLine("Mouth open!");
                         }
@@ -450,8 +457,9 @@ namespace MSMiddleMan
                     {
                         mouthOpenFrame = 0;
                         mouthClosedFrame++;
-                        if (mouthOpen && mouthClosedFrame >= mouthDelayFrame)
+                        if (mouthOpen && mouthClosedFrame >= mouthDelayFrame && DateTime.Now.Subtract(mouthLastChange).TotalMilliseconds > 1000 * mouthKeep)
                         {
+                            mouthLastChange = DateTime.Now;
                             mouthOpen = false;
                             Console.WriteLine("Mouth closed!");
                         }
@@ -481,6 +489,8 @@ namespace MSMiddleMan
                         if (handRaised)
                         {
                             handRaised = false;
+                            Console.WriteLine("Hands untracked!");
+                            vhmsg.SendMessage("userActivities handsUntracked");
                         }
                     }
 
