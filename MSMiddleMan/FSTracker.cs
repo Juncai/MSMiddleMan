@@ -494,7 +494,7 @@ namespace MSMiddleMan
                             bodyPosture = Posture.Forward;
                             Console.WriteLine("Lean forward!");
                             // TODO send fw msg
-                            vhmsg.SendMessage("userActivities leanForward");
+                            vhmsg.SendMessage("userActivities lean Forward");
                         }
                     }
                     else if (pos == Posture.Upright)
@@ -502,9 +502,9 @@ namespace MSMiddleMan
                         if (bodyPosture != Posture.Upright)
                         {
                             bodyPosture = Posture.Upright;
-                            Console.WriteLine("Upright!");
+                            Console.WriteLine("Sit Upright!");
                             // TODO send ur msg
-                            vhmsg.SendMessage("userActivities sitUpright");
+                            vhmsg.SendMessage("userActivities lean Upright");
                         }
                     }
                     else if (pos == Posture.Backward)
@@ -514,7 +514,7 @@ namespace MSMiddleMan
                             bodyPosture = Posture.Backward;
                             Console.WriteLine("Lean backward!");
                             // TODO send bw msg
-                            vhmsg.SendMessage("userActivities leanBackward");
+                            vhmsg.SendMessage("userActivities lean Backward");
                         }
                     }
                     else if (pos == Posture.Untracked)
@@ -524,7 +524,7 @@ namespace MSMiddleMan
                             bodyPosture = Posture.Untracked;
                             Console.WriteLine("Leaning untracked!");
                             // TODO send ut msg
-                            vhmsg.SendMessage("userActivities leaningUntracked");
+                            vhmsg.SendMessage("userActivities lean Untracked");
                         }
                     }
 
