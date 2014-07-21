@@ -148,7 +148,7 @@ namespace PerceptionTest
 
             using (vhmsg = new VHMsg.Client())
             using (SpeechRecognitionEngine recognizer = new SpeechRecognitionEngine(new System.Globalization.CultureInfo("en-US")))
-            using (fsTracker = new FSTracker())
+            using (fsTracker = new FSTracker(vhmsg))
             {
                 //recognizer.PauseRecognizerOnRecognition = true;
                 //recognizer.UnloadAllGrammars();
@@ -199,7 +199,7 @@ namespace PerceptionTest
                     Thread.Sleep(100);
                     if (userInteracting && !speechDetected && DateTime.Now.Subtract(lastSpeechDetected).TotalMilliseconds > 3000)
                     {
-                        userInteracting = false;
+                        //userInteracting = false;
                         vhmsg.SendMessage("userActivities stopTalking");
                         Console.WriteLine("userActivities stopTalking");
                     }
@@ -253,21 +253,21 @@ namespace PerceptionTest
             {
                 // TODO send speaking msg
                 vhmsg.SendMessage("userActivities speak");
-                userInteracting = true;
+                //userInteracting = true;
                 Console.WriteLine(e.Result.Text);
             }
         }
 
         static void CleanupBeforeExiting()
         {
-            vhmsg.SendMessage("vrProcEnd perception-test-application");
+            vhmsg.SendMessage("vrProcEnd Middleman-application");
             Reset();
             vhmsg.CloseConnection();
         }
 
         private static void Reset()
         {
-            CharacterReset();
+            //CharacterReset();
 
             trackEyes = false;
             trackGaze = false;

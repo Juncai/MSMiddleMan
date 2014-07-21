@@ -29,6 +29,8 @@ namespace MSMiddleMan
 
         private Skeleton[] skeletonData;
 
+        private VHMsg.Client vhmsg;
+
         // Jon
         //private static HashSet<int> mouthPoints = new HashSet<int> { 7, 31, 33, 40, 41,
         //64, 66, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89};
@@ -63,9 +65,12 @@ namespace MSMiddleMan
             }
         }
 
-        public FSTracker()
+        public FSTracker(VHMsg.Client vhm)
         {
-            // TODO init the tracker
+            // get message client
+            this.vhmsg = vhm;
+
+            // init the tracker
             foreach (KinectSensor potentialSensor in KinectSensor.KinectSensors)
             {
                 if (potentialSensor.Status == KinectStatus.Connected)
@@ -177,7 +182,7 @@ namespace MSMiddleMan
                         // We want keep a record of any skeleton, tracked or untracked.
                         if (!this.trackedSkeletons.ContainsKey(skeleton.TrackingId))
                         {
-                            this.trackedSkeletons.Add(skeleton.TrackingId, new SkeletonFaceTracker());
+                            this.trackedSkeletons.Add(skeleton.TrackingId, new SkeletonFaceTracker(vhmsg));
                         }
 
                         // Give each tracker the upated frame.
@@ -293,6 +298,8 @@ namespace MSMiddleMan
 
             private const double leanThreshold = 0.05;
 
+            private VHMsg.Client vhmsg;
+
             public void Dispose()
             {
                 if (this.faceTracker != null)
@@ -300,6 +307,11 @@ namespace MSMiddleMan
                     this.faceTracker.Dispose();
                     this.faceTracker = null;
                 }
+            }
+
+            public SkeletonFaceTracker(VHMsg.Client vhm)
+            {
+                this.vhmsg = vhm;
             }
 
             //public void DrawFaceModel(DrawingContext drawingContext)
@@ -432,7 +444,6 @@ namespace MSMiddleMan
                         {
                             mouthOpen = true;
                             Console.WriteLine("Mouth open!");
-                            // TODO send mouth open message!
                         }
                     }
                     else
@@ -443,7 +454,6 @@ namespace MSMiddleMan
                         {
                             mouthOpen = false;
                             Console.WriteLine("Mouth closed!");
-                            // TODO send mouth closed msg
                         }
                     }
 
@@ -454,7 +464,7 @@ namespace MSMiddleMan
                         {
                             handRaised = true;
                             Console.WriteLine("Hand raised!");
-                            // TODO send hand raised msg
+                            vhmsg.SendMessage("userActivities handRaised");
                         }
                     }
                     else if (isHandRaised(skeletonOfInterest, HandSide.Left) == HandRaiseState.Down && isHandRaised(skeletonOfInterest, HandSide.Right) == HandRaiseState.Down)
@@ -463,7 +473,7 @@ namespace MSMiddleMan
                         {
                             handRaised = false;
                             Console.WriteLine("Hands down!");
-                            // TODO send hand down msg
+                            vhmsg.SendMessage("userActivities handsDown");
                         }
                     }
                     else
@@ -484,6 +494,7 @@ namespace MSMiddleMan
                             bodyPosture = Posture.Forward;
                             Console.WriteLine("Lean forward!");
                             // TODO send fw msg
+                            vhmsg.SendMessage("userActivities leanForward");
                         }
                     }
                     else if (pos == Posture.Upright)
@@ -493,6 +504,7 @@ namespace MSMiddleMan
                             bodyPosture = Posture.Upright;
                             Console.WriteLine("Upright!");
                             // TODO send ur msg
+                            vhmsg.SendMessage("userActivities sitUpright");
                         }
                     }
                     else if (pos == Posture.Backward)
@@ -502,6 +514,7 @@ namespace MSMiddleMan
                             bodyPosture = Posture.Backward;
                             Console.WriteLine("Lean backward!");
                             // TODO send bw msg
+                            vhmsg.SendMessage("userActivities leanBackward");
                         }
                     }
                     else if (pos == Posture.Untracked)
@@ -511,6 +524,7 @@ namespace MSMiddleMan
                             bodyPosture = Posture.Untracked;
                             Console.WriteLine("Leaning untracked!");
                             // TODO send ut msg
+                            vhmsg.SendMessage("userActivities leaningUntracked");
                         }
                     }
 
