@@ -8,13 +8,12 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
-using System.Xml.Serialization;
-using System.Xml;
 using System.Timers;
 using System.Speech.Recognition;
 using Microsoft.Kinect;
 using Microsoft.Kinect.Toolkit;
 using Microsoft.Kinect.Toolkit.FaceTracking;
+using MSMiddleMan;
 
 namespace PerceptionTest
 {
@@ -68,15 +67,15 @@ namespace PerceptionTest
         private static double bodyMotionInHalf = 0;
         private static double forwardTotal = 0;
         private static double backwardTotal = 0;
+        private static double? prevZ;
+
+        private static FSTracker fsTracker = null;
         private static bool trackLeaning = false;
-        private static double? prevZ = null;
-        private static string direction = "NONE";
         private static bool trackHand = false;
-        private static int lHandUpFrameCount = 0;
-        private static int rHandUpFrameCount = 0;
         private static DateTime lastSpeechDetected = DateTime.Now;
         private static bool speechDetected = false;
         private static bool userInteracting = false;
+        private static bool mouthOpen = false;
 
         private static void OnTimedEvent(object src, ElapsedEventArgs e)
         {
@@ -148,71 +147,75 @@ namespace PerceptionTest
             SetConsoleCtrlHandler(hr, true);
 
             using (vhmsg = new VHMsg.Client())
+            using (SpeechRecognitionEngine recognizer = new SpeechRecognitionEngine(new System.Globalization.CultureInfo("en-US")))
+            using (fsTracker = new FSTracker())
             {
-                using (SpeechRecognitionEngine recognizer = new SpeechRecognitionEngine(new System.Globalization.CultureInfo("en-US")))
-                {
-                    //recognizer.PauseRecognizerOnRecognition = true;
-                    //recognizer.UnloadAllGrammars();
-                    recognizer.SetInputToDefaultAudioDevice();
-                    Choices greetings = new Choices();
-                    greetings.Add(new string[] { "Hi", "Rachel" });
-                    GrammarBuilder gb = new GrammarBuilder();
-                    gb.Append(greetings);
-                    Grammar g = new Grammar(gb);
-                    recognizer.LoadGrammar(g);
-                    recognizer.SpeechRecognized +=
-                        new EventHandler<SpeechRecognizedEventArgs>(sre_SpeechRecognized);
-                    recognizer.SpeechDetected +=
-                        new EventHandler<SpeechDetectedEventArgs>(ser_SpeechDetected);
-                    recognizer.RecognizeAsync(RecognizeMode.Multiple);
+                //recognizer.PauseRecognizerOnRecognition = true;
+                //recognizer.UnloadAllGrammars();
+                recognizer.SetInputToDefaultAudioDevice();
+                Choices greetings = new Choices();
+                greetings.Add(new string[] { "Hi", "Rachel" });
+                GrammarBuilder gb = new GrammarBuilder();
+                gb.Append(greetings);
+                Grammar g = new Grammar(gb);
+                recognizer.LoadGrammar(g);
+                recognizer.SpeechRecognized +=
+                    new EventHandler<SpeechRecognizedEventArgs>(sre_SpeechRecognized);
+                recognizer.SpeechDetected +=
+                    new EventHandler<SpeechDetectedEventArgs>(ser_SpeechDetected);
 
-                    gazeTimer.Elapsed += new ElapsedEventHandler(OnTimedEvent);
-                    string configFile = "config.ini";
-                    if (args.Length > 0)
+                // start detecting
+                recognizer.RecognizeAsync(RecognizeMode.Multiple);
+                fsTracker.startTracking();
+
+                gazeTimer.Elapsed += new ElapsedEventHandler(OnTimedEvent);
+                string configFile = "config.ini";
+                if (args.Length > 0)
+                {
+                    configFile = args[0];
+                    Console.WriteLine("Reading config file - " + configFile);
+                }
+
+                ReadConfigFile(configFile);
+
+                vhmsg.OpenConnection();
+
+                Console.WriteLine("VHMSG_SERVER: {0}", vhmsg.Server);
+                Console.WriteLine("VHMSG_SCOPE: {0}", vhmsg.Scope);
+
+                Console.WriteLine("Press q to quit");
+                Console.WriteLine("Listening to vrPerception Messages");
+
+                vhmsg.MessageEvent += new VHMsg.Client.MessageEventHandler(MessageAction);
+                vhmsg.SubscribeMessage("vrAllCall");
+                vhmsg.SubscribeMessage("vrKillComponent");
+                vhmsg.SubscribeMessage("vrPerceptionApplication");
+
+                vhmsg.SendMessage("vrComponent perception-test-application");
+
+
+                while (isRunning)
+                {
+                    Thread.Sleep(100);
+                    if (userInteracting && !speechDetected && DateTime.Now.Subtract(lastSpeechDetected).TotalMilliseconds > 3000)
                     {
-                        configFile = args[0];
-                        Console.WriteLine("Reading config file - " + configFile);
+                        userInteracting = false;
+                        vhmsg.SendMessage("userActivities stopTalking");
+                        Console.WriteLine("userActivities stopTalking");
                     }
 
-                    ReadConfigFile(configFile);
+                    // get mouth state
+                    mouthOpen = fsTracker.mouthOpen;
 
-                    vhmsg.OpenConnection();
+                    speechDetected = false;
 
-                    Console.WriteLine("VHMSG_SERVER: {0}", vhmsg.Server);
-                    Console.WriteLine("VHMSG_SCOPE: {0}", vhmsg.Scope);
-
-                    Console.WriteLine("Press q to quit");
-                    Console.WriteLine("Listening to vrPerception Messages");
-
-                    vhmsg.MessageEvent += new VHMsg.Client.MessageEventHandler(MessageAction);
-                    vhmsg.SubscribeMessage("vrPerception");
-                    vhmsg.SubscribeMessage("vrAllCall");
-                    vhmsg.SubscribeMessage("vrKillComponent");
-                    vhmsg.SubscribeMessage("vrPerceptionApplication");
-
-                    vhmsg.SendMessage("vrComponent perception-test-application");
-
-
-                    while (isRunning)
+                    //Console.WriteLine(recognizer.AudioState);
+                    if (_kbhit() != 0)
                     {
-                        Thread.Sleep(100);
-                        if (userInteracting && !speechDetected && DateTime.Now.Subtract(lastSpeechDetected).TotalMilliseconds > 3000)
+                        char c = Console.ReadKey(true).KeyChar;
+                        if (c == 'q')
                         {
-                            userInteracting = false;
-                            vhmsg.SendMessage("userActivities stopTalking");
-                            Console.WriteLine("userActivities stopTalking");
-                        }
-
-                        speechDetected = false;
-
-                        //Console.WriteLine(recognizer.AudioState);
-                        if (_kbhit() != 0)
-                        {
-                            char c = Console.ReadKey(true).KeyChar;
-                            if (c == 'q')
-                            {
-                                isRunning = false;
-                            }
+                            isRunning = false;
                         }
                     }
                 }
@@ -237,19 +240,22 @@ namespace PerceptionTest
 
         static void ser_SpeechDetected(object sender, SpeechDetectedEventArgs e)
         {
+#if debug
             Console.WriteLine("there is a speech");
+#endif
             speechDetected = true;
             lastSpeechDetected = DateTime.Now;
         }
 
         static void sre_SpeechRecognized(object sender, SpeechRecognizedEventArgs e)
         {
-            if (!userInteracting)
+            if (!userInteracting && mouthOpen)
             {
+                // TODO send speaking msg
                 vhmsg.SendMessage("userActivities speak");
                 userInteracting = true;
-            }
                 Console.WriteLine(e.Result.Text);
+            }
         }
 
         static void CleanupBeforeExiting()
@@ -288,220 +294,220 @@ namespace PerceptionTest
 
         }
 
-        static pml ParsePML(string xml)
-        {
-            pml myPML = new pml();
-            XmlSerializer serializer = new XmlSerializer(myPML.GetType());
-            StringReader stringReader = new StringReader(xml);
+//        static pml ParsePML(string xml)
+//        {
+//            pml myPML = new pml();
+//            XmlSerializer serializer = new XmlSerializer(myPML.GetType());
+//            StringReader stringReader = new StringReader(xml);
 
-            XmlTextReader xmlReader = new XmlTextReader(stringReader);
+//            XmlTextReader xmlReader = new XmlTextReader(stringReader);
 
-            myPML = (pml)serializer.Deserialize(xmlReader);
+//            myPML = (pml)serializer.Deserialize(xmlReader);
 
-            xmlReader.Close();
-            stringReader.Close();
+//            xmlReader.Close();
+//            stringReader.Close();
 
-#if debug
+//#if debug
 
-            Console.WriteLine(myPML.body[0].layer2.skeleton.joint[0].jointName);
-#endif
+//            Console.WriteLine(myPML.body[0].layer2.skeleton.joint[0].jointName);
+//#endif
 
-            return myPML;
-        }
+//            return myPML;
+//        }
 
-        static void SendLeaningMessage(pml myPML)
-        {
-            if (myPML.body.Length > 0)
-            {
-                body myBody = myPML.body[0];
+        //static void SendLeaningMessage(pml myPML)
+        //{
+        //    if (myPML.body.Length > 0)
+        //    {
+        //        body myBody = myPML.body[0];
 
-                if (trackLeaning)
-                {
-                    if (myBody.layer2 != null && myBody.layer2.posture.Count() > 0)
-                    {
-                        postureType pType = myBody.layer2.posture[0].postureType;
-                        if (pType == postureType.leaning_forward)
-                        {
-                            direction = "FORWARD";
-                        }
-                        else if (pType == postureType.leaning_backward)
-                        {
-                            direction = "BACKWARD";
-                        }
-                        else
-                        {
-                            direction = "NONE";
-                        }
+        //        if (trackLeaning)
+        //        {
+        //            if (myBody.layer2 != null && myBody.layer2.posture.Count() > 0)
+        //            {
+        //                postureType pType = myBody.layer2.posture[0].postureType;
+        //                if (pType == postureType.leaning_forward)
+        //                {
+        //                    direction = "FORWARD";
+        //                }
+        //                else if (pType == postureType.leaning_backward)
+        //                {
+        //                    direction = "BACKWARD";
+        //                }
+        //                else
+        //                {
+        //                    direction = "NONE";
+        //                }
 
-                        vhmsg.SendMessage("userActivities", string.Format("lean {0}", direction));
-                        Console.WriteLine(string.Format("lean {0}", direction));
-                    }
-                    else if (myBody.layer2 != null && myBody.layer2.headPose != null && myBody.layer2.headPose.position != null)
-                    {
-                        double deltaD = 0;
+        //                vhmsg.SendMessage("userActivities", string.Format("lean {0}", direction));
+        //                Console.WriteLine(string.Format("lean {0}", direction));
+        //            }
+        //            else if (myBody.layer2 != null && myBody.layer2.headPose != null && myBody.layer2.headPose.position != null)
+        //            {
+        //                double deltaD = 0;
                         
-                        if (prevZ != null)
-                        {
-                            deltaD = myBody.layer2.headPose.position.z - (double)prevZ;
-                        }
+        //                if (prevZ != null)
+        //                {
+        //                    deltaD = myBody.layer2.headPose.position.z - (double)prevZ;
+        //                }
 
-                        prevZ = myBody.layer2.headPose.position.z;
+        //                prevZ = myBody.layer2.headPose.position.z;
 
-                        deltaDsIn10.Enqueue(deltaD);
-                        bodyMotionIn10 += deltaD;
-                        deltaDsInHalf.Enqueue(deltaD);
-                        bodyMotionInHalf += deltaD;
-                        if (deltaDsIn10.Count == 300)
-                        {
-                            bodyMotionIn10 -= deltaDsIn10.Dequeue();
-                        }
-                        if (deltaDsInHalf.Count == 15)
-                        {
-                            bodyMotionInHalf -= deltaDsInHalf.Dequeue();
-                        }
+        //                deltaDsIn10.Enqueue(deltaD);
+        //                bodyMotionIn10 += deltaD;
+        //                deltaDsInHalf.Enqueue(deltaD);
+        //                bodyMotionInHalf += deltaD;
+        //                if (deltaDsIn10.Count == 300)
+        //                {
+        //                    bodyMotionIn10 -= deltaDsIn10.Dequeue();
+        //                }
+        //                if (deltaDsInHalf.Count == 15)
+        //                {
+        //                    bodyMotionInHalf -= deltaDsInHalf.Dequeue();
+        //                }
 
-                        if (deltaD > 0)
-                        {
-                            //continueBackward++;
-                            //continueForward = 0;
-                            backwardTotal += deltaD;
-                        }
-                        else if (deltaD < 0)
-                        {
-                            //continueForward++;
-                            //continueBackward = 0;
-                            forwardTotal += deltaD;
-                        }
-                        //else
-                        //{
-                        //    //continueForward = (continueForward == 0) ? 0 : continueForward++;
-                        //    //continueBackward = (continueBackward == 0) ? 0 : continueBackward++;
-                        //}
+        //                if (deltaD > 0)
+        //                {
+        //                    //continueBackward++;
+        //                    //continueForward = 0;
+        //                    backwardTotal += deltaD;
+        //                }
+        //                else if (deltaD < 0)
+        //                {
+        //                    //continueForward++;
+        //                    //continueBackward = 0;
+        //                    forwardTotal += deltaD;
+        //                }
+        //                //else
+        //                //{
+        //                //    //continueForward = (continueForward == 0) ? 0 : continueForward++;
+        //                //    //continueBackward = (continueBackward == 0) ? 0 : continueBackward++;
+        //                //}
 
-                        if (bodyMotionInHalf <= -12)
-                        {
-                            isLeaningForward = true;
-                            isLeaningBackward = false;
-                            direction = "FORWARD";
-                        }
-                        else if (bodyMotionInHalf >= 12)
-                        {
-                            isLeaningBackward = true;
-                            isLeaningForward = false;
-                            direction = "BACKWARD";
-                        }
-                        else
-                        {
-                            isLeaningBackward = false;
-                            isLeaningForward = false;
-                            direction = "NONE";
-                        }
+        //                if (bodyMotionInHalf <= -12)
+        //                {
+        //                    isLeaningForward = true;
+        //                    isLeaningBackward = false;
+        //                    direction = "FORWARD";
+        //                }
+        //                else if (bodyMotionInHalf >= 12)
+        //                {
+        //                    isLeaningBackward = true;
+        //                    isLeaningForward = false;
+        //                    direction = "BACKWARD";
+        //                }
+        //                else
+        //                {
+        //                    isLeaningBackward = false;
+        //                    isLeaningForward = false;
+        //                    direction = "NONE";
+        //                }
 
-                        vhmsg.SendMessage("userActivities", string.Format("lean {0} {1} {2} {3}", direction, bodyMotionIn10, forwardTotal, backwardTotal));
-                        Console.WriteLine(string.Format("lean {0} {1} {2} {3}", direction, bodyMotionIn10, forwardTotal, backwardTotal));
-                        //string messageToBeSentToSBM = ConvertToQuaternionAndString(myBody.layer2.headPose.position.x, myBody.layer2.headPose.position.y, myBody.layer2.headPose.position.z, myBody.layer2.headPose.rotation.rotX, myBody.layer2.headPose.rotation.rotY, myBody.layer2.headPose.rotation.rotZ);
-                        //for (int i = 0; i < character.Length; ++i)
-                        //{
-                        //    vhmsg.SendMessage("sbm", messageToBeSentToSBM.Replace(@"<character>", character[i]));
-                        //}
+        //                vhmsg.SendMessage("userActivities", string.Format("lean {0} {1} {2} {3}", direction, bodyMotionIn10, forwardTotal, backwardTotal));
+        //                Console.WriteLine(string.Format("lean {0} {1} {2} {3}", direction, bodyMotionIn10, forwardTotal, backwardTotal));
+        //                //string messageToBeSentToSBM = ConvertToQuaternionAndString(myBody.layer2.headPose.position.x, myBody.layer2.headPose.position.y, myBody.layer2.headPose.position.z, myBody.layer2.headPose.rotation.rotX, myBody.layer2.headPose.rotation.rotY, myBody.layer2.headPose.rotation.rotZ);
+        //                //for (int i = 0; i < character.Length; ++i)
+        //                //{
+        //                //    vhmsg.SendMessage("sbm", messageToBeSentToSBM.Replace(@"<character>", character[i]));
+        //                //}
 
-                    }
+        //            }
 
 
-                }
-            }
-        }
+        //        }
+        //    }
+        //}
 
-        static void SendInterruptionMessage(pml myPML)
-        {
-            if (myPML.body.Length > 0)
-            {
-                body myBody = myPML.body[0];
+//        static void SendInterruptionMessage(pml myPML)
+//        {
+//            if (myPML.body.Length > 0)
+//            {
+//                body myBody = myPML.body[0];
 
-                if (trackHand)
-                {
-                    if (myBody.layer2 != null)
-                    {
-                        if (myBody.layer2.handPoseLeft != null && myBody.layer2.handPoseLeft.position != null &&
-                            myBody.layer2.skeleton != null && myBody.layer2.skeleton.joint.Count() > 0)
-                        {
-                            // TODO finish detecting hand pose
-                            position lShoulderPos = null;
-                            position lElbowPos = null;
+//                if (trackHand)
+//                {
+//                    if (myBody.layer2 != null)
+//                    {
+//                        if (myBody.layer2.handPoseLeft != null && myBody.layer2.handPoseLeft.position != null &&
+//                            myBody.layer2.skeleton != null && myBody.layer2.skeleton.joint.Count() > 0)
+//                        {
+//                            // TODO finish detecting hand pose
+//                            position lShoulderPos = null;
+//                            position lElbowPos = null;
 
-                            foreach (joint j in myBody.layer2.skeleton.joint)
-                            {
-                                if (j.jointName.Equals("left_shoulder"))
-                                {
-                                    lShoulderPos = j.position;
-                                }
-                                if (j.jointName.Equals("left_elbow"))
-                                {
-                                    lElbowPos = j.position;
-                                }
-                            }
+//                            foreach (joint j in myBody.layer2.skeleton.joint)
+//                            {
+//                                if (j.jointName.Equals("left_shoulder"))
+//                                {
+//                                    lShoulderPos = j.position;
+//                                }
+//                                if (j.jointName.Equals("left_elbow"))
+//                                {
+//                                    lElbowPos = j.position;
+//                                }
+//                            }
 
-                            if (lShoulderPos != null && lElbowPos != null)
-                            {
-                                position lHandPos = myBody.layer2.handPoseLeft.position;
-                                if (lHandPos.y >= (lShoulderPos.y + lElbowPos.y) / 2)
-                                {
-                                    lHandUpFrameCount++;
-                                }
-                                else
-                                {
-                                    lHandUpFrameCount = 0;
-                                }
-                            }
-                        }
+//                            if (lShoulderPos != null && lElbowPos != null)
+//                            {
+//                                position lHandPos = myBody.layer2.handPoseLeft.position;
+//                                if (lHandPos.y >= (lShoulderPos.y + lElbowPos.y) / 2)
+//                                {
+//                                    lHandUpFrameCount++;
+//                                }
+//                                else
+//                                {
+//                                    lHandUpFrameCount = 0;
+//                                }
+//                            }
+//                        }
 
-                        if (myBody.layer2.handPoseRight != null && myBody.layer2.handPoseRight.position != null &&
-                            myBody.layer2.skeleton != null && myBody.layer2.skeleton.joint.Count() > 0)
-                        {
-                            // TODO finish detecting hand pose
-                            position rShoulderPos = null;
-                            position rElbowPos = null;
+//                        if (myBody.layer2.handPoseRight != null && myBody.layer2.handPoseRight.position != null &&
+//                            myBody.layer2.skeleton != null && myBody.layer2.skeleton.joint.Count() > 0)
+//                        {
+//                            // TODO finish detecting hand pose
+//                            position rShoulderPos = null;
+//                            position rElbowPos = null;
 
-                            foreach (joint j in myBody.layer2.skeleton.joint)
-                            {
-                                if (j.jointName.Equals("right_shoulder"))
-                                {
-                                    rShoulderPos = j.position;
-                                }
-                                if (j.jointName.Equals("right_elbow"))
-                                {
-                                    rElbowPos = j.position;
-                                }
-                            }
+//                            foreach (joint j in myBody.layer2.skeleton.joint)
+//                            {
+//                                if (j.jointName.Equals("right_shoulder"))
+//                                {
+//                                    rShoulderPos = j.position;
+//                                }
+//                                if (j.jointName.Equals("right_elbow"))
+//                                {
+//                                    rElbowPos = j.position;
+//                                }
+//                            }
 
-#if debug
-                            Console.WriteLine("rShoulderPos", rShoulderPos.y);
-#endif
-                            if (rShoulderPos != null && rElbowPos != null)
-                            {
-                                position rHandPos = myBody.layer2.handPoseRight.position;
-                                if (rHandPos.y >= (rShoulderPos.y + rElbowPos.y) / 2)
-                                {
-                                    rHandUpFrameCount++;
-                                }
-                                else
-                                {
-                                    rHandUpFrameCount = 0;
-                                }
-                            }
-                        }
+//#if debug
+//                            Console.WriteLine("rShoulderPos", rShoulderPos.y);
+//#endif
+//                            if (rShoulderPos != null && rElbowPos != null)
+//                            {
+//                                position rHandPos = myBody.layer2.handPoseRight.position;
+//                                if (rHandPos.y >= (rShoulderPos.y + rElbowPos.y) / 2)
+//                                {
+//                                    rHandUpFrameCount++;
+//                                }
+//                                else
+//                                {
+//                                    rHandUpFrameCount = 0;
+//                                }
+//                            }
+//                        }
 
-                        if (rHandUpFrameCount >= 10 || lHandUpFrameCount >= 10)
-                        {
-                            userInteracting = true;
-                            vhmsg.SendMessage("userActivities", "RaiseHand");
-                            Console.WriteLine("The user raises his/her hand.");
-                        }
-                    }
-                }
-            }
+//                        if (rHandUpFrameCount >= 10 || lHandUpFrameCount >= 10)
+//                        {
+//                            userInteracting = true;
+//                            vhmsg.SendMessage("userActivities", "RaiseHand");
+//                            Console.WriteLine("The user raises his/her hand.");
+//                        }
+//                    }
+//                }
+//            }
 
-        }
+//        }
 
         static void SendMessage(pml myPML)
         {
@@ -590,107 +596,107 @@ namespace PerceptionTest
             }
         }
 
-        static void ParseAndSendMessage(string xml)
-        {
-            //XmlSerializer serializer = new XmlSerializer(pml::typeid);
-            pml myPML = new pml();
-            XmlSerializer serializer = new XmlSerializer(myPML.GetType());
-            //string strXML = xml;
-            //strXML = strXML.Substring(strXML.IndexOf(" ") + 1);
-            StringReader stringReader = new StringReader(xml);
+        //static void ParseAndSendMessage(string xml)
+        //{
+        //    //XmlSerializer serializer = new XmlSerializer(pml::typeid);
+        //    pml myPML = new pml();
+        //    XmlSerializer serializer = new XmlSerializer(myPML.GetType());
+        //    //string strXML = xml;
+        //    //strXML = strXML.Substring(strXML.IndexOf(" ") + 1);
+        //    StringReader stringReader = new StringReader(xml);
 
-            XmlTextReader xmlReader = new XmlTextReader(stringReader);
+        //    XmlTextReader xmlReader = new XmlTextReader(stringReader);
 
-            myPML = (pml)serializer.Deserialize(xmlReader);
+        //    myPML = (pml)serializer.Deserialize(xmlReader);
             
-            xmlReader.Close();
-            stringReader.Close();
+        //    xmlReader.Close();
+        //    stringReader.Close();
 
 
-            if (myPML.body.Length > 0)
-            {
-                body myBody = myPML.body[0];
+        //    if (myPML.body.Length > 0)
+        //    {
+        //        body myBody = myPML.body[0];
 
-                if (trackHead)
-                {
-                    if (myBody.layer2 != null && myBody.layer2.headPose != null && myBody.layer2.headPose.position != null)
-                    {
-                        string messageToBeSentToSBM = ConvertToQuaternionAndString(myBody.layer2.headPose.position.x, myBody.layer2.headPose.position.y, myBody.layer2.headPose.position.z, myBody.layer2.headPose.rotation.rotX, myBody.layer2.headPose.rotation.rotY, myBody.layer2.headPose.rotation.rotZ);
-                        for (int i = 0; i < character.Length; ++i)
-                        {
-                            vhmsg.SendMessage("sbm", messageToBeSentToSBM.Replace(@"<character>", character[i]));
-                        }
+        //        if (trackHead)
+        //        {
+        //            if (myBody.layer2 != null && myBody.layer2.headPose != null && myBody.layer2.headPose.position != null)
+        //            {
+        //                string messageToBeSentToSBM = ConvertToQuaternionAndString(myBody.layer2.headPose.position.x, myBody.layer2.headPose.position.y, myBody.layer2.headPose.position.z, myBody.layer2.headPose.rotation.rotX, myBody.layer2.headPose.rotation.rotY, myBody.layer2.headPose.rotation.rotZ);
+        //                for (int i = 0; i < character.Length; ++i)
+        //                {
+        //                    vhmsg.SendMessage("sbm", messageToBeSentToSBM.Replace(@"<character>", character[i]));
+        //                }
 
-                    }
-                }
-                else if (trackGaze)
-                {
-                    if (shouldReadPML)
-                    {
-                        shouldReadPML = false;
-                        if (myBody.layer2 != null && myBody.layer2.headPose != null && myBody.layer2.headPose.position != null)
-                        {
-                            //string messageToBeSentToSBM = ConvertToQuaternionAndString(myBody.layer2.headPose.position.x, myBody.layer2.headPose.position.y, myBody.layer2.headPose.position.z, myBody.layer2.headPose.rotation.rotX, myBody.layer2.headPose.rotation.rotY, myBody.layer2.headPose.rotation.rotZ);
-                            string messageToBeSentToSBM = string.Empty;
-                            if (myBody.layer2.headPose.rotation.rotY <= -0.2)
-                            {
-                                //try right
-                                //messageToBeSentToSBM = @"bml char <character> <gaze direction=""LEFT"" angle=""80"" sbm:joint-range=""EYES NECK""  sbm:joint-speed=""500 100"" target=""Camera"" sbm:handle=""bradGaze""/>";
-                                messageToBeSentToSBM = @"bml char <character> <gaze direction=""LEFT"" angle=""80"" sbm:joint-range=""EYES NECK""  sbm:joint-speed=""500 100"" target=""Camera""/>";
-                            }
-                            else if (myBody.layer2.headPose.rotation.rotY >= 0.2)
-                            {
-                                // try left
-                                //messageToBeSentToSBM = @"bml char <character> <gaze direction=""RIGHT"" angle=""80"" sbm:joint-range=""EYES NECK""  sbm:joint-speed=""500 100"" target=""Camera"" sbm:handle=""bradGaze""/>";
-                                messageToBeSentToSBM = @"bml char <character> <gaze direction=""RIGHT"" angle=""80"" sbm:joint-range=""EYES NECK""  sbm:joint-speed=""500 100"" target=""Camera""/>";
-                            }
-                            else
-                            {
-                                // no gaze
-                                //messageToBeSentToSBM = @"bml char <character> <gaze direction=""RIGHT"" angle=""0"" sbm:joint-range=""EYES NECK""  sbm:joint-speed=""500 100"" target=""Camera"" sbm:handle=""bradGaze""/>";
-                                messageToBeSentToSBM = @"bml char <character> <gaze direction=""RIGHT"" angle=""0"" sbm:joint-range=""EYES NECK""  sbm:joint-speed=""500 100"" target=""Camera""/>";
-                            }
-                            for (int i = 0; i < character.Length; ++i)
-                            {
-                                vhmsg.SendMessage("sbm", messageToBeSentToSBM.Replace(@"<character>", character[i]));
-                            }
+        //            }
+        //        }
+        //        else if (trackGaze)
+        //        {
+        //            if (shouldReadPML)
+        //            {
+        //                shouldReadPML = false;
+        //                if (myBody.layer2 != null && myBody.layer2.headPose != null && myBody.layer2.headPose.position != null)
+        //                {
+        //                    //string messageToBeSentToSBM = ConvertToQuaternionAndString(myBody.layer2.headPose.position.x, myBody.layer2.headPose.position.y, myBody.layer2.headPose.position.z, myBody.layer2.headPose.rotation.rotX, myBody.layer2.headPose.rotation.rotY, myBody.layer2.headPose.rotation.rotZ);
+        //                    string messageToBeSentToSBM = string.Empty;
+        //                    if (myBody.layer2.headPose.rotation.rotY <= -0.2)
+        //                    {
+        //                        //try right
+        //                        //messageToBeSentToSBM = @"bml char <character> <gaze direction=""LEFT"" angle=""80"" sbm:joint-range=""EYES NECK""  sbm:joint-speed=""500 100"" target=""Camera"" sbm:handle=""bradGaze""/>";
+        //                        messageToBeSentToSBM = @"bml char <character> <gaze direction=""LEFT"" angle=""80"" sbm:joint-range=""EYES NECK""  sbm:joint-speed=""500 100"" target=""Camera""/>";
+        //                    }
+        //                    else if (myBody.layer2.headPose.rotation.rotY >= 0.2)
+        //                    {
+        //                        // try left
+        //                        //messageToBeSentToSBM = @"bml char <character> <gaze direction=""RIGHT"" angle=""80"" sbm:joint-range=""EYES NECK""  sbm:joint-speed=""500 100"" target=""Camera"" sbm:handle=""bradGaze""/>";
+        //                        messageToBeSentToSBM = @"bml char <character> <gaze direction=""RIGHT"" angle=""80"" sbm:joint-range=""EYES NECK""  sbm:joint-speed=""500 100"" target=""Camera""/>";
+        //                    }
+        //                    else
+        //                    {
+        //                        // no gaze
+        //                        //messageToBeSentToSBM = @"bml char <character> <gaze direction=""RIGHT"" angle=""0"" sbm:joint-range=""EYES NECK""  sbm:joint-speed=""500 100"" target=""Camera"" sbm:handle=""bradGaze""/>";
+        //                        messageToBeSentToSBM = @"bml char <character> <gaze direction=""RIGHT"" angle=""0"" sbm:joint-range=""EYES NECK""  sbm:joint-speed=""500 100"" target=""Camera""/>";
+        //                    }
+        //                    for (int i = 0; i < character.Length; ++i)
+        //                    {
+        //                        vhmsg.SendMessage("sbm", messageToBeSentToSBM.Replace(@"<character>", character[i]));
+        //                    }
 
-                        }
-                    }
-                }
-                else if (trackAddressee)
-                {
-                    if (shouldReadPML)
-                    {
-                        shouldReadPML = false;
-                        if (myBody.layer2 != null && myBody.layer2.headPose != null && myBody.layer2.headPose.position != null)
-                        {
-                            string characterOnLeft = @"rachel";
-                            string characterOnRight = @"brad";
+        //                }
+        //            }
+        //        }
+        //        else if (trackAddressee)
+        //        {
+        //            if (shouldReadPML)
+        //            {
+        //                shouldReadPML = false;
+        //                if (myBody.layer2 != null && myBody.layer2.headPose != null && myBody.layer2.headPose.position != null)
+        //                {
+        //                    string characterOnLeft = @"rachel";
+        //                    string characterOnRight = @"brad";
 
-                            if (myBody.layer2.headPose.rotation.rotY <= -0.2)
-                            {
-                                //left
-                                string messageToNPCEditor = string.Format(@"<action name=""SetFacingCharacter"" target=""user""><param name=""facingCharacter"">{0}</param></action>", characterOnLeft);
-                                vhmsg.SendMessage("NPCEditor", messageToNPCEditor);
-                            }
-                            else if (myBody.layer2.headPose.rotation.rotY >= 0.2)
-                            {
-                                //right
-                                string messageToNPCEditor = string.Format(@"<action name=""SetFacingCharacter"" target=""user""><param name=""facingCharacter"">{0}</param></action>", characterOnRight);
-                                vhmsg.SendMessage("NPCEditor", messageToNPCEditor);
-                            }
-                            else
-                            {
-                                //reset
-                                string messageToNPCEditor = string.Format(@"<action name=""SetFacingCharacter"" target=""user""><param name=""facingCharacter"">{0}</param></action>", "none");
-                                vhmsg.SendMessage("NPCEditor", messageToNPCEditor);
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        //                    if (myBody.layer2.headPose.rotation.rotY <= -0.2)
+        //                    {
+        //                        //left
+        //                        string messageToNPCEditor = string.Format(@"<action name=""SetFacingCharacter"" target=""user""><param name=""facingCharacter"">{0}</param></action>", characterOnLeft);
+        //                        vhmsg.SendMessage("NPCEditor", messageToNPCEditor);
+        //                    }
+        //                    else if (myBody.layer2.headPose.rotation.rotY >= 0.2)
+        //                    {
+        //                        //right
+        //                        string messageToNPCEditor = string.Format(@"<action name=""SetFacingCharacter"" target=""user""><param name=""facingCharacter"">{0}</param></action>", characterOnRight);
+        //                        vhmsg.SendMessage("NPCEditor", messageToNPCEditor);
+        //                    }
+        //                    else
+        //                    {
+        //                        //reset
+        //                        string messageToNPCEditor = string.Format(@"<action name=""SetFacingCharacter"" target=""user""><param name=""facingCharacter"">{0}</param></action>", "none");
+        //                        vhmsg.SendMessage("NPCEditor", messageToNPCEditor);
+        //                    }
+        //                }
+        //            }
+        //        }
+        //    }
+        //}
 
 
         private static string ConvertToQuaternionAndString(double x, double y, double z, double rotX, double rotY, double rotZ)
@@ -734,26 +740,27 @@ namespace PerceptionTest
 
             if (splitargs.Length > 0)
             {
-                if (splitargs[0] == "vrPerception")
-                {
-                    if (shouldListen)
-                    {
-                        if (splitargs.Length > 3)
-                        {
-//#if JUN
-//                            Console.WriteLine(splitargs[1]);
-//#endif
-                            // TODO body motion detect
-                            string pmlArg = args.s.Substring(args.s.IndexOf(splitargs[2]));
-                            //ParseAndSendMessage(pmlArg);
-                            pml myPML = ParsePML(pmlArg);
-                            SendMessage(myPML);
-                            SendLeaningMessage(myPML);
-                            SendInterruptionMessage(myPML);
-                        }
-                    }
-                }
-                else if (splitargs[0] == "vrPerceptionApplication")
+//                if (splitargs[0] == "vrPerception")
+//                {
+//                    if (shouldListen)
+//                    {
+//                        if (splitargs.Length > 3)
+//                        {
+////#if JUN
+////                            Console.WriteLine(splitargs[1]);
+////#endif
+//                            // TODO body motion detect
+//                            string pmlArg = args.s.Substring(args.s.IndexOf(splitargs[2]));
+//                            //ParseAndSendMessage(pmlArg);
+//                            pml myPML = ParsePML(pmlArg);
+//                            SendMessage(myPML);
+//                            SendLeaningMessage(myPML);
+//                            SendInterruptionMessage(myPML);
+//                        }
+//                    }
+//                }
+//                else 
+                if (splitargs[0] == "vrPerceptionApplication")
                 {
                     if (splitargs.Length >= 2)
                     {

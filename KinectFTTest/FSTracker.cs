@@ -1,35 +1,18 @@
-﻿// --------------------------------------------------------------------------------------------------------------------
-// <copyright file="FaceTrackingViewer.xaml.cs" company="Microsoft">
-//     Copyright (c) Microsoft Corporation.  All rights reserved.
-// </copyright>
-// --------------------------------------------------------------------------------------------------------------------
+﻿using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Windows;
+using System.Windows.Media;
+using Microsoft.Kinect;
+using Microsoft.Kinect.Toolkit.FaceTracking;
 
-namespace FaceTrackingBasics
+using Point = System.Windows.Point;
+
+namespace KinectFTTest
 {
-    using System;
-    using System.Collections.Generic;
-    using System.Diagnostics;
-    using System.Windows;
-    using System.Windows.Controls;
-    using System.Windows.Media;
-    using Microsoft.Kinect;
-    using Microsoft.Kinect.Toolkit.FaceTracking;
-
-    using Point = System.Windows.Point;
-
-    /// <summary>
-    /// Class that uses the Face Tracking SDK to display a face mask for
-    /// tracked skeletons
-    /// </summary>
-    public partial class FaceTrackingViewer : UserControl, IDisposable
+    class FSTracker : IDisposable
     {
-        public static readonly DependencyProperty KinectProperty = DependencyProperty.Register(
-            "Kinect", 
-            typeof(KinectSensor), 
-            typeof(FaceTrackingViewer), 
-            new PropertyMetadata(
-                null, (o, args) => ((FaceTrackingViewer)o).OnSensorChanged((KinectSensor)args.OldValue, (KinectSensor)args.NewValue)));
-
+        private KinectSensor sensor = null;
         private const uint MaxMissedFrames = 100;
 
         private readonly Dictionary<int, SkeletonFaceTracker> trackedSkeletons = new Dictionary<int, SkeletonFaceTracker>();
@@ -46,17 +29,7 @@ namespace FaceTrackingBasics
 
         private Skeleton[] skeletonData;
 
-        // Jon
-        //private static HashSet<int> mouthPoints = new HashSet<int> { 7, 31, 33, 40, 41,
-        //64, 66, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89};
-        private static HashSet<int> mouthPoints = new HashSet<int> { 40, 81, 82, 83, 84, 87};
-
-        public FaceTrackingViewer()
-        {
-            this.InitializeComponent();
-        }
-
-        ~FaceTrackingViewer()
+        ~FSTracker()
         {
             this.Dispose(false);
         }
@@ -65,12 +38,12 @@ namespace FaceTrackingBasics
         {
             get
             {
-                return (KinectSensor)this.GetValue(KinectProperty);
+                return this.sensor;
             }
 
             set
             {
-                this.SetValue(KinectProperty, value);
+                this.sensor = value;
             }
         }
 
@@ -90,14 +63,14 @@ namespace FaceTrackingBasics
             }
         }
 
-        protected override void OnRender(DrawingContext drawingContext)
-        {
-            base.OnRender(drawingContext);
-            foreach (SkeletonFaceTracker faceInformation in this.trackedSkeletons.Values)
-            {
-                faceInformation.DrawFaceModel(drawingContext);
-            }
-        }
+        //protected override void OnRender(DrawingContext drawingContext)
+        //{
+        //    base.OnRender(drawingContext);
+        //    foreach (SkeletonFaceTracker faceInformation in this.trackedSkeletons.Values)
+        //    {
+        //        faceInformation.DrawFaceModel(drawingContext);
+        //    }
+        //}
 
         private void OnAllFramesReady(object sender, AllFramesReadyEventArgs allFramesReadyEventArgs)
         {
@@ -177,7 +150,7 @@ namespace FaceTrackingBasics
 
                 this.RemoveOldTrackers(skeletonFrame.FrameNumber);
 
-                this.InvalidateVisual();
+                //this.InvalidateVisual();
             }
             finally
             {
@@ -289,20 +262,11 @@ namespace FaceTrackingBasics
 
                 foreach (var t in faceTriangles)
                 {
-                    if (mouthPoints.Contains(t.First) && mouthPoints.Contains(t.Second) &&
-                        mouthPoints.Contains(t.Third))
-                    {
-                        var triangle = new FaceModelTriangle();
-                        triangle.P1 = faceModelPts[t.First];
-                        triangle.P2 = faceModelPts[t.Second];
-                        triangle.P3 = faceModelPts[t.Third];
-                        faceModel.Add(triangle);
-                    }
-                    //var triangle = new FaceModelTriangle();
-                    //triangle.P1 = faceModelPts[t.First];
-                    //triangle.P2 = faceModelPts[t.Second];
-                    //triangle.P3 = faceModelPts[t.Third];
-                    //faceModel.Add(triangle);
+                    var triangle = new FaceModelTriangle();
+                    triangle.P1 = faceModelPts[t.First];
+                    triangle.P2 = faceModelPts[t.Second];
+                    triangle.P3 = faceModelPts[t.Third];
+                    faceModel.Add(triangle);
                 }
 
                 var faceModelGroup = new GeometryGroup();
