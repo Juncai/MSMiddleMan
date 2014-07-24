@@ -320,52 +320,6 @@ namespace MSMiddleMan
                 this.vhmsg = vhm;
             }
 
-            //public void DrawFaceModel(DrawingContext drawingContext)
-            //{
-            //    if (!this.lastFaceTrackSucceeded || this.skeletonTrackingState != SkeletonTrackingState.Tracked)
-            //    {
-            //        return;
-            //    }
-
-            //    var faceModelPts = new List<Point>();
-            //    var faceModel = new List<FaceModelTriangle>();
-
-            //    for (int i = 0; i < this.facePoints.Count; i++)
-            //    {
-            //        faceModelPts.Add(new Point(this.facePoints[i].X + 0.5f, this.facePoints[i].Y + 0.5f));
-            //    }
-
-            //    foreach (var t in faceTriangles)
-            //    {
-            //        if (mouthPoints.Contains(t.First) && mouthPoints.Contains(t.Second) &&
-            //            mouthPoints.Contains(t.Third))
-            //        {
-            //            var triangle = new FaceModelTriangle();
-            //            triangle.P1 = faceModelPts[t.First];
-            //            triangle.P2 = faceModelPts[t.Second];
-            //            triangle.P3 = faceModelPts[t.Third];
-            //            faceModel.Add(triangle);
-            //        }
-            //        //var triangle = new FaceModelTriangle();
-            //        //triangle.P1 = faceModelPts[t.First];
-            //        //triangle.P2 = faceModelPts[t.Second];
-            //        //triangle.P3 = faceModelPts[t.Third];
-            //        //faceModel.Add(triangle);
-            //    }
-
-            //    var faceModelGroup = new GeometryGroup();
-            //    for (int i = 0; i < faceModel.Count; i++)
-            //    {
-            //        var faceTriangle = new GeometryGroup();
-            //        faceTriangle.Children.Add(new LineGeometry(faceModel[i].P1, faceModel[i].P2));
-            //        faceTriangle.Children.Add(new LineGeometry(faceModel[i].P2, faceModel[i].P3));
-            //        faceTriangle.Children.Add(new LineGeometry(faceModel[i].P3, faceModel[i].P1));
-            //        faceModelGroup.Children.Add(faceTriangle);
-            //    }
-
-            //    drawingContext.DrawGeometry(Brushes.LightYellow, new Pen(Brushes.LightYellow, 1.0), faceModelGroup);
-            //}
-
             /// <summary>
             /// Updates the face tracking information for this skeleton
             /// </summary>
@@ -434,7 +388,6 @@ namespace MSMiddleMan
                     }
 
                     var faceModelPts = new List<Point>();
-                    var faceModel = new List<FaceModelTriangle>();
 
                     for (int i = 0; i < this.facePoints.Count; i++)
                     {
@@ -627,12 +580,7 @@ namespace MSMiddleMan
                 return Math.Sqrt(Math.Pow((fPoint.X - sPoint.X), 2) + Math.Pow((fPoint.Y - sPoint.Y), 2));
             }
 
-            private struct FaceModelTriangle
-            {
-                public Point P1;
-                public Point P2;
-                public Point P3;
-            }
+            
         }
     }
 }
